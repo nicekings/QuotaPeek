@@ -24,7 +24,7 @@ Mọi dịch vụ AI đều hiện **phần hạn mức còn lại**, giống �
 
 Trong **Nội dung vòng theo dịch vụ**, chọn dịch vụ rồi chọn kỳ riêng cho **Số giữa** và **Vòng ngoài**. Ví dụ với Claude, đặt số giữa là **5 giờ**, vòng ngoài là **Tuần chung** và vẫn ghim Fable để xem khi di chuột. Bạn cũng có thể đổi chỗ hoặc dùng cùng một kỳ cho cả hai. Ở chế độ **Tự động**, số giữa ưu tiên 5 giờ, vòng ngoài ưu tiên tuần. Khi có nhiều hạn mức cùng kỳ, QuotaPeek chọn mức còn ít nhất có dữ liệu. Nếu kỳ được chọn tạm thời không có trong danh sách đã ghim, QuotaPeek dùng chế độ tự động cho vị trí đó và khôi phục lựa chọn khi kỳ xuất hiện lại.
 
-**Tốc độ dùng.** Bảng chi tiết và chú thích khi di chuột so mức đã dùng với mức đều đặn từ đầu kỳ. Ví dụ: **Đủ đến kỳ đặt lại**, hoặc **Dùng nhanh · hết lúc 26/11 14:00**. Giờ đặt lại hiện dạng đếm ngược ("Đặt lại sau 3 giờ 24 phút"); vào **Giao diện → Giờ đặt lại hạn mức** để đổi sang giờ cụ thể.
+**Tốc độ dùng.** Bảng chi tiết ước tính liệu hạn mức còn lại có đủ đến kỳ đặt lại nếu bạn tiếp tục dùng với tốc độ hiện tại. Với kiểu **Dạng số**, bạn cũng có thể thấy ước tính này khi di chuột lên từng chỉ số AI. Ví dụ: **Đủ đến kỳ đặt lại**, hoặc **Dùng nhanh · hết lúc 26/11 14:00**. Giờ đặt lại hiện dạng đếm ngược ("Đặt lại sau 3 giờ 24 phút"); vào **Giao diện → Giờ đặt lại hạn mức** để đổi sang giờ cụ thể.
 
 Dấu `~` đánh dấu số chưa được xác nhận lại: lần đọc gần nhất lỗi, hoặc app vừa khởi động. Nếu không đọc lại được trong 10 phút, taskbar hiện `—` và chú thích khi di chuột vẫn ghi số lần cuối. Qua giờ đặt lại mà chưa có số mới, QuotaPeek hiện **Chờ cập nhật**.
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -9,6 +10,9 @@ namespace NhipPC
 {
 internal static partial class Checks
 {
+    [DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
     static void DesktopOptions()
     {
         DesktopAccountFields();
@@ -498,6 +502,12 @@ internal static partial class Checks
                           SampleRows().Any(row => row.Label == (code == "en" ? "Claude · Weekly" : "Claude · Tuần")),
                           "Tray menu and cached quota labels follow the selected language " + code);
                 }
+                app.OpenDashboard();
+                var activeDashboard = Application.OpenForms.OfType<Dashboard>().Single();
+                SendMessage(activeDashboard.Handle, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+                Application.DoEvents();
+                Check(activeDashboard.IsDisposed && app.Menu.IsDisposed,
+                      "A Windows close request releases the flyout and the tray application together");
             }
             finally
             {

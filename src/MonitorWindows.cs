@@ -383,6 +383,12 @@ internal sealed class Dashboard : Form
                 e.Cancel = true;
                 Hide();
             }
+            else if (e.CloseReason == CloseReason.TaskManagerClosing)
+            {
+                // A system close request must stop the owner of the tray icon along with its flyout.
+                e.Cancel = true;
+                BeginInvoke(new Action(app.ExitThread));
+            }
         };
     }
     public void Present(Point? anchor = null)

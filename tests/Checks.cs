@@ -42,11 +42,13 @@ internal static partial class Checks
             ClaudeStream();
             AntigravityReport();
             PaceAndTray();
+            TrayQuotaEdges();
             Panels();
             Settings(temp);
             Storage();
             Reducers();
             HubScheduling(temp);
+            ProviderRefreshChecks();
             Hardware();
             DesktopOptions();
             NativeControls();
@@ -187,6 +189,14 @@ internal static partial class Checks
               "Existing status line receives the original input");
         StatusLine.Toggle("claude");
         Check(File.ReadAllText(path) == input, "Disconnect restores original custom status line");
+        foreach (string invalid in new[] { @"{""GlassOpacity"":""auto""}", @"{""OffsetX"":2147483648}",
+                                           @"{""TrayRingSize"":""unrecognized""}", @"{""Enabled"":{""ram"":""invalid""}}" })
+        {
+            Store.Write(Store.PathFor("preferences"), invalid);
+            Check(Store.Load().GlassOpacity == new Preferences().GlassOpacity &&
+                  File.ReadAllText(Store.PathFor("preferences")) == invalid,
+                  "Unreadable setting values fall back safely without rewriting the file: " + invalid);
+        }
         Store.Write(Store.PathFor("preferences"), @"{""TrayRingSize"":2,""LargeTrayRing"":false,""OffsetX"":19}");
         var migrated = Store.Load();
         Check(migrated.TrayRingSize == RingSize.Large && migrated.LargeTrayRing && migrated.OffsetX == 19,
@@ -201,6 +211,13 @@ internal static partial class Checks
     }
     static void Storage()
     {
+        string directory = Store.Root;
+        while (directory.Length < 157)
+            directory = Path.Combine(directory, "snapshot");
+        string deepSnapshot = Path.Combine(directory, "last-antigravity-" + new string('a', 64) + ".json");
+        Store.Write(deepSnapshot, "first");
+        Store.Write(deepSnapshot, "second");
+        Check(File.ReadAllText(deepSnapshot) == "second", "Long account snapshot paths support atomic create and replace");
         var r = Reading.Start("claude", "Claude Code");
         r.AccountKey = AccountScope.Key("claude", "email", "reader@example.test");
         r.Plan = "pro";

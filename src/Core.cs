@@ -11,7 +11,7 @@ using System.Web.Script.Serialization;
 
 [assembly:AssemblyTitle("QuotaPeek")]
 [assembly:AssemblyProduct("QuotaPeek")]
-[assembly:AssemblyVersion("2.1.0.0")]
+[assembly:AssemblyVersion("2.1.1.0")]
 namespace NhipPC
 {
 internal static class Catalog
@@ -346,6 +346,13 @@ internal static class Store
         catch (InvalidOperationException)
         {
         }
+        catch (Exception ex)
+        {
+            // Framework type converters wrap malformed numeric and enum fields in different exceptions.
+            var cause = ex.GetBaseException();
+            if (!(ex is FormatException) && !(cause is FormatException) && !(cause is OverflowException))
+                throw;
+        }
         return null;
     }
     public static Preferences Load()
@@ -375,8 +382,9 @@ internal static class Store
     }
     public static void Write(string path, string contents)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
-        string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        string directory = Path.GetDirectoryName(path);
+        Directory.CreateDirectory(directory);
+        string temp = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             File.WriteAllText(temp, contents, new UTF8Encoding(false));

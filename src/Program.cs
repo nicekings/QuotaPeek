@@ -351,7 +351,7 @@ internal sealed class MonitorApp : ApplicationContext
     {
         if (e.Mode == PowerModes.Resume)
             Post(delegate {
-                Hub.Refresh(null);
+                Hub.Refresh(null, userInitiated: false);
                 Tick();
             });
     }

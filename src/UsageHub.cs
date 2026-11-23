@@ -94,6 +94,12 @@ internal sealed class UsageHub : IDisposable
             }
             var account = AccountScope.Load(id);
             states[id] = Reducer.Start(account, account == null ? null : account.Last(), ReadGuard.Until(id), now);
+            if (id == "claude")
+            {
+                string pause = Store.Read<string>(Store.PathFor("pause-claude"));
+                if (pause != null)
+                    states[id] = Reducer.Complete(states[id], ReadResult.Fail(Phase.NeedsSetup, pause), now, Interval(id));
+            }
             bells[id] = BellTime(id);
             if (id == "codex")
                 StartCodex();
@@ -175,17 +181,33 @@ internal sealed class UsageHub : IDisposable
         catch (UnauthorizedAccessException) {}
     }
 
+    static void SaveClaudePause(string notice)
+    {
+        string path = Store.PathFor("pause-claude");
+        try
+        {
+            if (notice == null)
+                File.Delete(path);
+            else
+                Store.Write(path, Json.Encode(notice));
+        }
+        catch (IOException) {}
+        catch (UnauthorizedAccessException) {}
+    }
+
     // The single entry point for a finished read, from any source.
     internal void Complete(string id, ReadResult result)
     {
         long now = Fmt.Now;
         var before = states[id];
         var next = Reducer.Complete(before, result, now, Interval(id));
+        if (id == "claude" && next.Phase == Phase.NeedsSetup)
+            SaveClaudePause(next.Message);
         if (result.Phase == Phase.Cooldown && next.RetryAt > now && id != "codex")
             ReadGuard.Delay(id, next.RetryAt);
         if (!Same(before.Account, next.Account))
             SaveSelection(id, next.Account);
-        if (result.Phase == Phase.Live)
+        if (next.Phase == Phase.Live)
             Persist(id, before.Snapshot, next.Snapshot, now);
         Set(id, next);
     }
@@ -194,7 +216,7 @@ internal sealed class UsageHub : IDisposable
     {
         long last;
         saved.TryGetValue(id, out last);
-        bool different = previous == null || previous.Source != current.Source ||
+        bool different = !AccountScope.From(current).Matches(previous) || previous.Source != current.Source ||
                          Json.Encode(previous.Windows) != Json.Encode(current.Windows);
         if (!different && now - last < 30)
             return;
@@ -208,7 +230,7 @@ internal sealed class UsageHub : IDisposable
     }
 
     // "Đọc lại": lift user-action pauses, keep service cooldowns, read as soon as allowed.
-    public void Refresh(string id)
+    public void Refresh(string id, bool userInitiated = true)
     {
         if (closed)
             return;
@@ -217,6 +239,14 @@ internal sealed class UsageHub : IDisposable
         {
             if ((id != null && key != id) || states[key].Phase == Phase.Off)
                 continue;
+            if (states[key].Phase == Phase.NeedsSetup)
+            {
+                // Windows also requests a refresh after waking. Only an explicit retry lifts a setup pause.
+                if (!userInitiated)
+                    continue;
+                if (key == "claude")
+                    SaveClaudePause(null);
+            }
             if (key == "codex")
             {
                 if (codex != null && codex.Refresh())
@@ -274,7 +304,8 @@ internal sealed class UsageHub : IDisposable
         foreach (string id in new[] { "claude", "antigravity" })
         {
             var s = states[id];
-            if (s.Phase == Phase.Off)
+            // A running read will replace NextRead on completion. Leave the bell pending until then.
+            if (s.Phase == Phase.Off || s.Busy)
                 continue;
             var time = BellTime(id);
             DateTime last;

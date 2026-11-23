@@ -22,6 +22,7 @@ internal sealed class ReadResult
 {
     public Phase Phase;
     public Reading Reading;
+    public AccountScope VerifiedAccount;
     public string Message;
     public long RetryAt;
     // Seconds until the next automatic attempt. 0 lets the reducer choose a backoff.
@@ -38,6 +39,15 @@ internal sealed class ReadResult
 
     // Collectors report through Reading flags. Translate them in exactly one place.
     public static ReadResult From(string id, Reading r, long now)
+    {
+        var result = Classify(id, r, now);
+        if (r != null && r.Provider == id && !r.ScopeUnverified &&
+            (result.Phase == Phase.Error || result.Phase == Phase.Cooldown || result.Phase == Phase.NeedsSetup))
+            result.VerifiedAccount = AccountScope.From(r);
+        return result;
+    }
+
+    static ReadResult Classify(string id, Reading r, long now)
     {
         if (r == null)
             return Fail(Phase.Error, "Nguồn chưa phản hồi. QuotaPeek sẽ tự thử lại.");
@@ -76,14 +86,14 @@ internal sealed class ProviderState
     // The tray and widget mark every number that is not from a recent successful read.
     public bool Fresh
     {
-        get { return Phase == Phase.Live && Snapshot != null; }
+        get { return Phase == Phase.Live && ShowsNumbers; }
     }
     // Numbers stay visible while they can still be trusted to describe the current account.
     public bool ShowsNumbers
     {
-        get { return Snapshot != null && (Phase == Phase.Live || Phase == Phase.Stale ||
-                                          Phase == Phase.Connecting || Phase == Phase.Cooldown ||
-                                          Phase == Phase.NeedsSetup); }
+        get { return Snapshot != null && Snapshot.Time >= Fmt.Now - Reducer.KeepNumbersSeconds &&
+                     (Phase == Phase.Live || Phase == Phase.Stale || Phase == Phase.Connecting ||
+                      Phase == Phase.Cooldown || Phase == Phase.NeedsSetup); }
     }
 }
 
@@ -156,6 +166,11 @@ internal static class Reducer
         s.Busy = false;
         if (s.Phase == Phase.Off)
             return s;
+        if (result.VerifiedAccount != null && !result.VerifiedAccount.Matches(s.Snapshot))
+        {
+            s.Account = result.VerifiedAccount;
+            s.Snapshot = null;
+        }
         switch (result.Phase)
         {
         case Phase.Live:

@@ -30,6 +30,9 @@ internal static class ClaudeUsage
         if (AccountScope.From(before) == null || before.ScopeUnverified)
             return before;
         var usage = Reading.Start("claude", Source);
+        // Even a paused or failed quota check can identify that the previous account is no longer active.
+        usage.AccountKey = before.AccountKey;
+        usage.Plan = before.Plan;
         int exit;
         string raw = Run(exe, usage, out exit);
         if (raw == null && !usage.NeedsLogin && !usage.RateLimited)
@@ -42,15 +45,14 @@ internal static class ClaudeUsage
         if (usage.Windows.Count == 0 || usage.NeedsSetup)
             return usage;
         var after = CliIdentity.Claude(exe, Source);
+        if (AccountScope.From(after) == null || after.ScopeUnverified)
+            return after;
         if (after.AccountKey != before.AccountKey ||
             !String.Equals(after.Plan, before.Plan, StringComparison.OrdinalIgnoreCase))
         {
-            after.ScopeUnverified = true;
             after.Notice = "Claude Code vừa đổi tài khoản hoặc gói. Chờ lần đọc tiếp theo.";
             return after;
         }
-        usage.AccountKey = before.AccountKey;
-        usage.Plan = before.Plan;
         return usage;
     }
 

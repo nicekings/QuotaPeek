@@ -122,10 +122,10 @@ internal class ViewRow
 }
 internal class PinChoice
 {
-    public string Key, Name, Label, Number, Value, Tip, Note;
+    public string Key, Name, Label, Number, Value, Tip, Note, LastValue;
     public double? Percent;
     public int Level;
-    public bool Stale;
+    public bool Stale, IsBalance;
     public string Pace;
     // Set only on a combined 2-bar tray icon: the periods it draws, shortest period first.
     public List<PinChoice> Bars;
@@ -159,6 +159,9 @@ internal static class DisplayData
     {
         if (quota.Used.HasValue && !quota.Expired(now))
             return UiText.Pick("Còn lại ", "Remaining ") + Fmt.Percent(Remaining(quota).Value);
+        double amount;
+        if (!quota.Expired(now) && RemainingAmount(quota.Balance, out amount))
+            return UiText.Pick("Còn ", "Remaining ") + amount.ToString(UiText.NumberCulture);
         return UiText.FromReading(quota.Value(now));
     }
     public static string QuotaSummary(string provider, Quota quota, long now)
@@ -273,6 +276,7 @@ internal static class DisplayData
                                       Name = q.Used.HasValue ? name + UiText.Pick(" (còn lại)", " (remaining)") : name, Label = UiText.FromReading(q.Label),
                                       Value = val, Number = number, Percent = percent,
                                       Level = shown && !expired ? Level(q) : 0, Stale = !fresh,
+                                      IsBalance = !q.Used.HasValue, LastValue = !shown && !expired ? QuotaValue(q, now) : null,
                                       Note = pace == null ? reset : reset == null ? pace : reset + " · " + pace,
                                       Tip = name + " · " + (shown ? val : QuotaValue(q, now) + UiText.Pick(" (chưa xác nhận lại)", " (unconfirmed)")) +
                                             " · " + (fresh ? UiText.Pick("Đọc ", "Checked ") : UiText.Pick("Lần cuối ", "Last seen ")) + Fmt.Local(r.Time, "dd/MM HH:mm") +
@@ -307,19 +311,26 @@ internal static class DisplayData
             return UiText.Pick("Tắt", "Off");
         }
     }
+    // Antigravity stores quantities as "Còn 12,5", including in older snapshots.
+    static bool RemainingAmount(string balance, out double amount)
+    {
+        amount = 0;
+        return balance != null && balance.StartsWith("Còn ", StringComparison.Ordinal) &&
+               Double.TryParse(balance.Substring(4), System.Globalization.NumberStyles.Float, Fmt.Vi, out amount);
+    }
     static string ShortBalance(string balance)
     {
         if (String.IsNullOrWhiteSpace(balance))
             return Dash;
         var amount = balance.Split(' ')[0];
         double n;
-        if (!Double.TryParse(amount, System.Globalization.NumberStyles.Float,
+        if (!RemainingAmount(balance, out n) && !Double.TryParse(amount, System.Globalization.NumberStyles.Float,
                              System.Globalization.CultureInfo.InvariantCulture, out n) &&
             !Double.TryParse(amount, out n))
             return Dash;
         return Math.Abs(n) >= 1000000 ? (n / 1000000).ToString("0.#", UiText.NumberCulture) + "M"
                : Math.Abs(n) >= 1000  ? (n / 1000).ToString("0.#", UiText.NumberCulture) + "k"
-                                      : amount;
+                                      : n.ToString(UiText.NumberCulture);
     }
     public static List<PinChoice> VisibleTray(Preferences p, List<PinChoice> choices)
     {
@@ -336,7 +347,7 @@ internal static class DisplayData
     }
     internal static bool RingPeriod(PinChoice choice)
     {
-        if (!choice.Key.StartsWith("ai/", StringComparison.Ordinal)) return false;
+        if (choice.IsBalance || !choice.Key.StartsWith("ai/", StringComparison.Ordinal)) return false;
         long duration = Duration(choice.Key);
         return duration == 18000 || duration == 604800;
     }
@@ -344,10 +355,14 @@ internal static class DisplayData
     {
         return period.Key == "ai/claude/seven_day" ? UiText.Pick("Tuần chung", "Overall weekly") : period.Label;
     }
+    static List<PinChoice> PeriodsByDuration(IEnumerable<PinChoice> pinned)
+    {
+        return pinned.GroupBy(v => Duration(v.Key)).OrderBy(g => g.Key)
+                     .Select(g => g.OrderBy(v => v.Percent ?? Double.MaxValue).First()).ToList();
+    }
     internal static List<PinChoice> RingParts(Preferences p, string id, List<PinChoice> pinned)
     {
-        var defaults = pinned.GroupBy(v => Duration(v.Key)).OrderBy(g => g.Key)
-                             .Select(g => g.OrderBy(v => v.Percent ?? Double.MaxValue).First()).ToList();
+        var defaults = PeriodsByDuration(pinned);
         if (defaults.Count == 0) return defaults;
         RingFields fields;
         if (!p.RingFieldsByProvider.TryGetValue(id, out fields) || fields == null) return defaults;
@@ -357,6 +372,9 @@ internal static class DisplayData
     }
     internal static string RingReading(PinChoice period)
     {
+        if (period.LastValue != null)
+            return RingLabel(period) + UiText.Pick(" lần cuối ", " last ") +
+                   period.LastValue.Replace(UiText.Pick("Còn lại ", "Remaining "), "");
         return RingLabel(period) + " " + (period.Stale ? "~" : "") + period.Value.Replace(UiText.Pick("Còn lại ", "Remaining "), "");
     }
     static string RingTip(string service, List<PinChoice> displayed, IEnumerable<PinChoice> pinned)
@@ -395,23 +413,26 @@ internal static class DisplayData
             }
             string id = c.Parent;
             long duration = Duration(c.Key);
-            if (duration == 0 || (ring && duration != 18000 && duration != 604800))
+            if (c.IsBalance || duration == 0 || (ring && duration != 18000 && duration != 604800))
             {
                 result.Add(c);                     // e.g. a credit balance keeps its number
                 continue;
             }
             if (result.Any(r => r.Bars != null && r.Parent == id))
                 continue;
-            var periods = visible.Where(v => v.Parent == id && v.Key.StartsWith("ai/", StringComparison.Ordinal) &&
+            var periods = visible.Where(v => v.Parent == id && !v.IsBalance && v.Key.StartsWith("ai/", StringComparison.Ordinal) &&
                                              Duration(v.Key) > 0);
             var group = ring
                 ? RingParts(p, id, periods.Where(RingPeriod).ToList())
-                : periods.OrderBy(v => Duration(v.Key)).Take(2).ToList();
+                : PeriodsByDuration(periods);
+            if (group.Count > 2) group.RemoveRange(1, group.Count - 2);
             string service = group[0].Name.Substring(0, Math.Max(0, group[0].Name.IndexOf(" · ")));
             result.Add(new PinChoice {
                 Key = "ai/" + id + "/bars", Name = service, Bars = group, Ring = ring, RingSize = p.GetRingSize(), Stale = group.Any(g => g.Stale),
                 Level = group.Max(g => g.Level), Number = String.Join("/", group.Select(g => g.Number)),
-                Tip = ring ? RingTip(service, group, periods) : service + " · " + String.Join(" · ", group.Select(g => g.Label + " " + (g.Stale ? "~ " : "") + g.Value.Replace(UiText.Pick("Còn lại ", "Remaining "), UiText.Pick("còn ", "remaining "))))
+                Tip = ring ? RingTip(service, group, periods) : service + " · " + String.Join(" · ", group.Select(g =>
+                          g.LastValue != null ? RingReading(g) : g.Label + " " + (g.Stale ? "~ " : "") +
+                          g.Value.Replace(UiText.Pick("Còn lại ", "Remaining "), UiText.Pick("còn ", "remaining "))))
             });
         }
         return result;

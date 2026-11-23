@@ -95,7 +95,7 @@ internal sealed class TrayIndicators : NativeWindow, IDisposable
             var tip = "QuotaPeek · " + c.Tip;
             if (tip.Length > 127)
                 tip = tip.Substring(0, 127);
-            string bars = c.Bars == null ? "" : String.Join(",", c.Bars.Select(b => b.Percent + ":" + b.Level + ":" + b.Stale));
+            string bars = c.Bars == null ? "" : String.Join(",", c.Bars.Select(b => b.Key + ":" + b.Percent + ":" + b.Level + ":" + b.Stale));
             string face = c.Ring + "|" + c.RingSize + "|" + c.Number + "|" + bars + "|" + c.Stale + "|" + c.Level + "|" + c.Parent + "|" + Theme.TrayDark + "|" +
                           SystemInformation.HighContrast + "|" + SystemInformation.SmallIconSize.Height;
             bool redraw = face != e.Face;
@@ -193,7 +193,9 @@ internal sealed class TrayIndicators : NativeWindow, IDisposable
             float left = 1, width = size - 2;
             float thick = Math.Max(4, (float)Math.Round(size * 0.3)), thin = Math.Max(3, (float)Math.Round(size * 0.2));
             float gap = Math.Max(2, (float)Math.Round(size * 0.12));
-            var heights = bars.Count == 1 ? new[] { thick + 1 } : new[] { thick, thin };
+            var heights = bars.Count == 1
+                ? new[] { DisplayData.Duration(bars[0].Key) >= 604800 ? thin : thick }
+                : new[] { thick, thin };
             float total = heights.Sum() + gap * (heights.Length - 1), y = (size - total) / 2;
             for (int i = 0; i < heights.Length; i++)
             {
